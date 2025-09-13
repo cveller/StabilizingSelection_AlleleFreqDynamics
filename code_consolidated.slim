@@ -1,0 +1,269 @@
+// Script to generate data for figures in Negm & Veller "The effect of long-range linkage disequilibrium on allele-frequency dynamics under stabilizing selection".
+
+
+initialize() {
+
+	
+	defineConstant("map", "Dmel");	// "unlinked" or "Human" or "Dmel" (Drosophila melanogaster)
+	defineConstant("MAFs_setting", "variable"); // "constant" or "variable"
+	defineConstant("effectSizes_setting", "variable"); // "constant" or "variable"
+	
+	defineConstant("mapFolder", "~/Desktop/"); // folder containing linkage maps
+	defineConstant("filepath", "~/Desktop/");	// output directory
+	defineConstant("id", getSeed());		// unique identifier for the simulation run
+
+	// Simulation constants
+	defineConstant("L", 1000);			// number of trait-affecting loci
+	defineConstant("N", 10000);			// size of population
+	
+	if (MAFs_setting == "constant")
+	{
+	defineConstant("maf", 0.2);			// fixed initial minor-allele frequency for all loci
+	defineConstant("mafs", rep(maf,L)); // minor-allele freqs across loci
+	defineConstant("Vg", L*2*maf*(1-maf)); // initial genic variance in case of constant MAFs (for both constant and variable effect sizes a, E[a^2] = 1)
+	}
+	if (MAFs_setting == "variable")
+	{
+	defineConstant("maf_min", 0.1);		// min minor-allele freq in initial population
+	defineConstant("maf_max", 0.3);		// max minor-allele freq in initial population
+	defineConstant("mafs", runif(L,maf_min,maf_max)); // minor-allele freqs across loci
+	defineConstant("Vg", 313.3333); // expected initial genic variance when MAFs vary across loci
+	}
+	
+	if (effectSizes_setting == "constant")
+	{
+	defineConstant("alpha", 1);			// effect of trait-increasing alleles
+	defineConstant("effectSizes", (2*((1:L) % 2) - 1)*alpha ); // effect sizes of minor alleles across loci (+alpha, -alpha, +alpha, -alpha, ...)
+	}
+	if (effectSizes_setting == "variable")
+	{
+	defineConstant("effectVar", 1);			// variance of dist of effect sizes
+	defineConstant("effectSizes", rnorm(L,0,sqrt(effectVar))); // effect sizes of minor alleles across loci, normally distributed with mean 0 and variance effectVar
+	}
+	
+	defineConstant("sumEffects", sum(effectSizes) ); // haploid sum of effects sizes
+	defineConstant("initialMeanPheno", sum( effectSizes*(2*mafs-1) ) ); // mean initial phenotype---we'll set the trait optimum to this value so that the population is initially centered on the optimum
+	
+	defineConstant("VS_Vg", 5);			// desired strength of selection, in terms of VS/Vg
+	defineConstant("VS", VS_Vg*Vg);		// inverse strength of stabilizing selection
+	
+	// Define results files
+	defineConstant("meanout",paste0(filepath,"meanfile.txt_",id,".txt"));		// tracks mean phenotype per generation
+	defineConstant("varout",paste0(filepath,"varfile.txt_",id,".txt"));		// tracks phenotypic (additive genetic) variance per generation
+	defineConstant("genicout",paste0(filepath,"genicfile.txt_",id,".txt"));		// tracks genic variance per generation
+	defineConstant("aofmeanout",paste0(filepath,"meanaoffile_",id,".txt"));		// tracks mean allele frequency across all loci
+	defineConstant("aof10gens",paste0(filepath,"aof10gens_",id,".txt"));		// tracks allele frequency for every locus, every 10 generations
+	defineConstant("intialinfo",paste0(filepath,"intialinfo_",id,".txt"));		// stores the initial state (effect size, allele frequency) for each locus
+	
+	// all variation is introduced at the beginning of the simulation, not generated over time
+	initializeMutationRate(0);
+	
+	initializeMutationType("m1", 0.5, "f", 0.0);
+	// m1 mutations will have their phenotypic effects assigned later; their selection coefficient `s` is set to 0.0
+	// so that fitness is determined solely by the quantitative trait.
+	m1.convertToSubstitution = F; // prevents fixed mutations from being removed from the simulation
+	
+ 	initializeGenomicElementType("g1", m1, 1.0);
+	initializeGenomicElement(g1, 0, L-1); // create a single chromosome containing L loci
+
+	initializeSex("A");
+	
+	// input recombination rates
+	if (map == "Human")
+	{
+	
+	// input male recombination
+lines = readFile(mapFolder + "uniformGenetic_HumanMale_rates.txt");
+	rates = NULL;
+	for (line in lines)
+	{
+		components = strsplit(line, "\t");
+		rates = c(rates, asFloat(components[0]));
+	}
+lines = readFile(mapFolder + "uniformGenetic_Human_ends.txt");
+	ends = NULL;
+	for (line in lines)
+	{
+		components = strsplit(line, "\t");
+		ends = c(ends, asFloat(components[0]));
+	}
+	initializeRecombinationRate(rates, asInteger(ends), sex="M");
+	
+	// input female recombination
+lines = readFile(mapFolder + "uniformGenetic_HumanFemale_rates.txt");
+	rates = NULL;
+	for (line in lines)
+	{
+		components = strsplit(line, "\t");
+		rates = c(rates, asFloat(components[0]));
+	}
+lines = readFile(mapFolder + "uniformGenetic_Human_ends.txt");
+	ends = NULL;
+	for (line in lines)
+	{
+		components = strsplit(line, "\t");
+		ends = c(ends, asFloat(components[0]));
+	}
+	initializeRecombinationRate(rates, asInteger(ends), sex="F");
+	
+	}
+	
+	if (map == "Dmel")
+	{
+	
+	// input male recombination
+	lines = readFile(mapFolder + "uniformGenetic_DrosMale_rates.txt");
+	rates = NULL;
+	for (line in lines)
+	{
+		components = strsplit(line, "\t");
+		rates = c(rates, asFloat(components[0]));
+	}
+	lines = readFile(mapFolder + "uniformGenetic_Dros_ends.txt");
+	ends = NULL;
+	for (line in lines)
+	{
+		components = strsplit(line, "\t");
+		ends = c(ends, asFloat(components[0]));
+	}
+	initializeRecombinationRate(rates, asInteger(ends), sex="M");
+	
+	// input female recombination
+//	lines = readFile(mapFolder + "linkageMapForSLiM_Dmel_Female_1kLoci_uniformGenetic.txt");
+lines = readFile(mapFolder + "uniformGenetic_DrosFemale_rates.txt");
+	rates = NULL;
+	for (line in lines)
+	{
+		components = strsplit(line, "\t");
+		rates = c(rates, asFloat(components[0]));
+	}
+	lines = readFile(mapFolder + "uniformGenetic_Dros_ends.txt");
+	ends = NULL;
+	for (line in lines)
+	{
+		components = strsplit(line, "\t");
+		ends = c(ends, asFloat(components[0]));
+	}
+	initializeRecombinationRate(rates, asInteger(ends), sex="F");
+	
+	}
+	
+	if (map == "unlinked")
+	{
+	
+	initializeRecombinationRate(0.5);
+	
+	} 
+}
+
+// this block runs once at the start of generation 1 to set up the initial population state
+1 early(){
+	
+	sim.addSubpop("p1", N);
+	
+	file="";
+
+	for(l in 0:(L-1))
+	{
+		// determine the number of genomes that should carry the minor allele based on its frequency
+		allele_counts=asInteger(round(2*mafs[l]*N));
+		
+		// randomly sample genomes to receive the minor allele
+		sampledGenomes_locusl = sample(p1.genomes, allele_counts);
+		// add minor allele as a new mutation at the specified locus in the sampled genomes
+		new_mut=sampledGenomes_locusl.addNewDrawnMutation(m1, asInteger(l));
+		
+		effect = effectSizes[l];
+		new_mut.setValue("effect_size", effect); // store the drawn effect size on the mutation object
+		
+		// append initial state information to a string for output
+		file=paste0(file,l,",",effect,",",mafs[l],"\n");
+	}
+	
+	// write the initial state information to file
+	writeFile(intialinfo,file,append=T);
+}
+
+// fitness callback to calculate the fitness of each individual every generation
+fitnessEffect() { 
+	muts = individual.genomes.mutationsOfType(m1);
+	// phenotype is the sum of effect sizes of all mutations carried by the individual
+	mut_phenotype_placeholder = size(muts) ? sum(muts.getValue("effect_size")) else 0.0;
+	mut_phenotype = mut_phenotype_placeholder - sumEffects; // this adjustment corresponds to coding the genotype at each locus as -1, 0, +1 for no, one, or two minor alleles carried, and then defining (the genetic contribution to) the phenotype as the sum of genotypes across loci weighted by effect sizes of the minor alleles. This is equivalent to defining genotypes as -1, 0, +1 for no, one, or two trait-increasing alleles, and calculating the phenotype as the sum of genotypes across loci weighted by the effects of their trait-increasing alleles, as in the paper. 
+	
+	// relative fitness of an individual, under stabilizing selection with an optimum of 0 and inverse strength VS
+	fitness = dnorm(asFloat(mut_phenotype), asFloat(initialMeanPheno), sqrt(VS))*sqrt(2*PI*VS);
+	return fitness;
+}
+
+// this block runs at the end of every generation to calculate and output summary statistics
+1: late(){
+	catn("####################################");
+
+	// calculate and print population-level summary statistics each generation
+	if (sim.cycle % 1 == 0){ 
+		phenotypes=c();
+		// loop over all individuals to calculate their phenotypes
+		for (i in 0:(size(p1.individuals)-1)){
+			ind = p1.individuals[i];
+			muts = ind.genomes.mutationsOfType(m1);
+			mut_phenotype_placeholder = size(muts) ? sum(muts.getValue("effect_size")) else 0.0;
+			mut_phenotype = mut_phenotype_placeholder - sumEffects;
+			phenotypes=c(phenotypes,mut_phenotype);
+		}
+		// since there is no environmental variance, phenotypic variance equals additive genetic variance
+		catn(sim.cycle + ": Mean phenotype == " + mean(phenotypes));
+		catn(sim.cycle + ": var phenotype == " + var(phenotypes));
+	}
+	
+	// calculate allele frequencies at all loci
+	inds = sim.subpopulations.individuals;
+	// count the number of mutant alleles at each position across all genomes
+	countAlleles = "sum(asInteger(inds.genome1.containsMarkerMutation(m1, applyValue)) + 			asInteger(inds.genome2.containsMarkerMutation(m1, applyValue)));";
+	aofs = sapply(0:(L-1), countAlleles) ;
+	// convert counts to frequencies
+	aofs=aofs/(2*N);
+
+	// every 10 generations, write all allele frequencies to a file
+	if (sim.cycle % 10 == 0){
+		file="";
+		for(l in 0:(L-1)){
+			file=paste0(file,sim.cycle,",",l,",",aofs[l],"\n");
+		}
+		writeFile(aof10gens,file,append=T);
+	}
+
+	catn(sim.cycle + ": p  == " + mean(aofs));
+	
+	// calculate the total genic variance for the trait
+	muts = sim.mutationsOfType(m1);
+	allele_frequencies = sim.mutationFrequencies(p1, muts);
+	allele_effects = muts.getValue("effect_size");
+	// genic variance is the sum of 2*p*q*a^2 over all loci
+	genic_variances = 2*(allele_effects^2)*allele_frequencies*(1-allele_frequencies);
+	genic_var = sum(genic_variances);
+	
+	catn(sim.cycle + ": genic_var  == " + genic_var);
+	
+	// write summary statistics to their respective files
+	file="";
+	file=paste0(file,mean(phenotypes),"\n");
+	writeFile(meanout,file,append=T);
+	
+	file="";
+	file=paste0(file,var(phenotypes),"\n");
+	writeFile(varout,file,append=T);
+	
+	file="";
+	file=paste0(file,genic_var,"\n");
+	writeFile(genicout,file,append=T);
+	
+	file="";
+	file=paste0(file,mean(aofs),"\n");
+	writeFile(aofmeanout,file,append=T);
+}
+
+// end the simulation after 500 generations
+500 late() {
+	sim.simulationFinished();
+}
